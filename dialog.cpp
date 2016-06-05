@@ -80,7 +80,6 @@ Dialog::Dialog(QWidget *parent) :
     connect(ui->commandEd, SIGNAL(returnPressed()), this, SLOT(runCommand()));
 
     mCommandItemModel = new CommandItemModel(this);
-    ui->commandList->installEventFilter(this);
     ui->commandList->setModel(mCommandItemModel);
     ui->commandList->setEditTriggers(QAbstractItemView::NoEditTriggers);
     connect(ui->commandList, SIGNAL(clicked(QModelIndex)), this, SLOT(runCommand()));
@@ -173,114 +172,52 @@ bool Dialog::eventFilter(QObject *object, QEvent *event)
     {
         QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
 
-        if (object == ui->commandEd)
-            return editKeyPressEvent(keyEvent);
+        // the focus is kept on the line edit, but we forward some key events
+        // to the list for the list shortcuts.
+        switch (keyEvent->key())
+        {
+        case Qt::Key_P: // fall-through for Ctrl + P
+            if (!keyEvent->modifiers().testFlag(Qt::ControlModifier))
+                return false;
+        case Qt::Key_Up:
+        case Qt::Key_PageUp:
+            if (ui->commandEd->text().isEmpty() &&
+                ui->commandList->isVisible() &&
+                ui->commandList->currentIndex().row() == 0)
+            {
+                setFilter("", false);
+                return true;
+            }
+            qApp->sendEvent(ui->commandList, event);
+            return true;
 
-        if (object == ui->commandList)
-            return listKeyPressEvent(keyEvent);
+        case Qt::Key_N: // fall-through for Ctrl + N
+            if (!keyEvent->modifiers().testFlag(Qt::ControlModifier))
+                return false;
+        case Qt::Key_Down:
+        case Qt::Key_PageDown:
+            if (ui->commandEd->text().isEmpty() &&
+                ui->commandList->isHidden())
+            {
+                setFilter("", true);
+                return true;
+            }
+
+            qApp->sendEvent(ui->commandList, event);
+            return true;
+
+        case Qt::Key_Tab:
+        case Qt::Key_Backtab:
+            qApp->sendEvent(ui->commandList, event);
+            return true;
+
+        default:
+            return false;
+        }
     }
 
     return QDialog::eventFilter(object, event);
 }
-
-
-/************************************************
- eventFilter for ui->commandEd
- ************************************************/
-bool Dialog::editKeyPressEvent(QKeyEvent *event)
-{
-    switch (event->key())
-    {
-    case Qt::Key_N:
-        if (event->modifiers().testFlag(Qt::ControlModifier))
-        {
-            QKeyEvent ev(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
-            editKeyPressEvent(&ev);
-            return true;
-        }
-            return false;
-
-    case Qt::Key_P:
-        if (event->modifiers().testFlag(Qt::ControlModifier))
-        {
-            QKeyEvent ev(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
-            editKeyPressEvent(&ev);
-            return true;
-        }
-            return false;
-
-    case Qt::Key_Up:
-    case Qt::Key_PageUp:
-        if (ui->commandEd->text().isEmpty() &&
-            ui->commandList->isVisible() &&
-            ui->commandList->currentIndex().row() == 0
-           )
-        {
-            setFilter("", false);
-            return true;
-        }
-        qApp->sendEvent(ui->commandList, event);
-        return true;
-
-    case Qt::Key_Down:
-    case Qt::Key_PageDown:
-        if (ui->commandEd->text().isEmpty() &&
-            ui->commandList->isHidden()
-           )
-        {
-            setFilter("", true);
-            return true;
-        }
-
-        qApp->sendEvent(ui->commandList, event);
-        return true;
-
-    case Qt::Key_Tab:
-        const CommandProviderItem *command = mCommandItemModel->command(ui->commandList->currentIndex());
-        if (command)
-            ui->commandEd->setText(command->title());
-        return true;
-    }
-
-    return QDialog::eventFilter(ui->commandList, event);
-}
-
-
-/************************************************
- eventFilter for ui->commandList
- ************************************************/
-bool Dialog::listKeyPressEvent(QKeyEvent *event)
-{
-    switch (event->key())
-    {
-    case Qt::Key_Up:
-    case Qt::Key_PageUp:
-        if (ui->commandList->currentIndex().row() == 0)
-        {
-            ui->commandEd->setFocus();
-            return true;
-        }
-        break;
-
-    case Qt::Key_Left:
-    case Qt::Key_Right:
-        ui->commandEd->setFocus();
-        qApp->sendEvent(ui->commandEd, event);
-        return true;
-
-    default:
-        // Alphabetical or number key ...........
-        if (!event->text().isEmpty())
-        {
-            ui->commandEd->setFocus();
-            qApp->sendEvent(ui->commandEd, event);
-            return true;
-        }
-    }
-
-    return QDialog::eventFilter(ui->commandEd, event);
-}
-
 
 /************************************************
 
